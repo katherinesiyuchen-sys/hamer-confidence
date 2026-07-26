@@ -3,11 +3,10 @@
 Three standard views of that question, plus the downstream filtering
 experiment that connects the project to robot-learning-from-video.
 
-  1. correlation        — Pearson/Spearman between score and error
-  2. sparsification     — remove most-uncertain frames first, watch error drop
-  3. risk thresholding  — AUROC on "is this frame's error > tau?"
-  4. filtering          — keep frames with score < threshold; how much cleaner
-                          is the surviving demonstration data?
+  1. correlation: Pearson/Spearman between score and error
+  2. sparsification: remove most-uncertain frames first, watch error drop
+  3. risk thresholding: AUROC on "is this frame's error > tau?"
+  4. filtering: keep frames with score < threshold; how much cleaner is the surviving demonstration data?
 """
 
 from __future__ import annotations
