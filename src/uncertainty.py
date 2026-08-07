@@ -41,7 +41,9 @@ def ensemble_disagreement(joint_preds: np.ndarray) -> np.ndarray:
 
     (T, M, 21, 3) -> (T,). Batched version of ensemble_disagreement.
     """
-    std = preds.std(axis=1)
+    preds = np.asarray(joint_preds)
+    axis = 0 if preds.ndim == 3 else 1   # (M,21,3) single frame, else (T,M,21,3)
+    std = preds.std(axis=axis)
     return np.linalg.norm(std, axis=-1).mean(axis=-1)
 
 

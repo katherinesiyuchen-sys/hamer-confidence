@@ -6,7 +6,7 @@ Layout expected below (HO3D_v3 root):
 
   HO3D_v3/
     train/<seq>/rgb/*.jpg
-    train/<seq>/meta/*.pkl     # per-frame GT: MANO params, object pose, K
+    train/<seq>/meta/*.pkl  
     evaluation/<seq>/...
 
 Object CAD models come from the YCB models release (same README).
