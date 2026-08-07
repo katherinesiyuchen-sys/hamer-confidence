@@ -17,6 +17,7 @@ All pose arrays follow HaMeR/MANO conventions:
 
 from __future__ import annotations
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 try:  # torch only needed for mc_dropout and the learned head
     import torch
@@ -31,15 +32,17 @@ except ImportError:  # numpy-only estimators still importable (e.g. on laptop)
 
 # 1. Ensemble disagreement
 
-def ensemble_disagreement(joint_preds: np.ndarray) -> float:
+def ensemble_disagreement(joint_preds: np.ndarray) -> np.ndarray:
     """Mean per-joint std across ensemble members.
 
     joint_preds: (M, 21, 3) M ensemble members' 3D joints for one frame.
     An "ensemble" can be M different checkpoints, or the same model run on
     M augmented crops (test-time augmentation)
+
+    (T, M, 21, 3) -> (T,). Batched version of ensemble_disagreement.
     """
-    std = joint_preds.std(axis=0)          # (21, 3)
-    return float(np.linalg.norm(std, axis=-1).mean())
+    std = preds.std(axis=1)
+    return np.linalg.norm(std, axis=-1).mean(axis=-1)
 
 
 # 2. MC-dropout
@@ -84,13 +87,21 @@ def temporal_jitter(joints_seq: np.ndarray, window: int = 5) -> np.ndarray:
     Uses distance to the median-filtered trajectory rather than raw velocity
     so genuinely fast motion is not punished as much as inconsistency.
     """
-    T = joints_seq.shape[0]
+    T = joints_seq.shape[0] 
     half = window // 2
-    scores = np.zeros(T)
-    for t in range(T):
+    scores = np.empty(T)
+
+    if T >= window:
+        win = sliding_window_view(joints_seq, window, axis=0)    # (T-w+1, 21, 3, w)
+        med = np.median(win, axis=-1)
+        scores[half:T-half] = np.linalg.norm(
+            joints_seq[half:T-half] - med, axis=-1).mean(axis=-1)
+
+    for t in list(range(min(half, T))) + list(range(max(T-half, 0), T)):
         lo, hi = max(0, t - half), min(T, t + half + 1)
-        med = np.median(joints_seq[lo:hi], axis=0)      # (21, 3)
+        med = np.median(joints_seq[lo:hi], axis=0)
         scores[t] = np.linalg.norm(joints_seq[t] - med, axis=-1).mean()
+
     return scores
 
 
@@ -98,7 +109,7 @@ def temporal_jitter(joints_seq: np.ndarray, window: int = 5) -> np.ndarray:
 
 def reprojection_residual(joints3d_cam: np.ndarray, K: np.ndarray, 
                           joints2d_detector: np.ndarray, 
-                          detector_conf: np.ndarray | None = None,) -> float:
+                          detector_conf: np.ndarray | None = None,) -> np.ndarray:
     """Project the 3D prediction and compare with an independent 2D detector.
 
     joints3d_cam: (21, 3) in CAMERA frame (meters).
@@ -108,14 +119,16 @@ def reprojection_residual(joints3d_cam: np.ndarray, K: np.ndarray,
     detector_conf: (21,) optional per-joint weights.
 
     Two models agreeing is evidence both are right; disagreement flags trouble.
+
+    (T,21,3),(3,3),(T,21,2)[,(T,21)] -> (T,). Batched reprojection residual.
     """
     proj = joints3d_cam @ K.T       # (21, 3)
     proj = proj[:, :2] / np.clip(proj[:, 2:3], 1e-6, None)
     err = np.linalg.norm(proj - joints2d_detector, axis=-1)   # (21,) px
     if detector_conf is not None:
         w = detector_conf / max(detector_conf.sum(), 1e-6)
-        return float((err * w).sum())
-    return float(err.mean())
+        return (err * w).sum()
+    return err.mean()
 
 
 # 5. Learned confidence head
