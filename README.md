@@ -1,6 +1,6 @@
 # HaMeR confidence
 
-There is quite assumption inside every pipeline that learns robot manipulation from human video: that the reconstrution is true. A camera watches a person pick up a mug. A pose model, let's say HaMeR, turns each frame into 21 3-dimensional joint positions. Those trajectories become demonstrations, and a policy learns to imitate them. At no point does anything in that chain ask whether the hand it is imitating was ever really there.
+There is quite assumption inside every pipeline that learns robot manipulation from human video: that the reconstrution is true. A camera watches a person pick up a mug. A pose model, let's say [HaMeR](https://github.com/geopavlakos/hamer), turns each frame into 21 3-dimensional joint positions. Those trajectories become demonstrations, and a policy learns to imitate them. At no point does anything in that chain ask whether the hand it is imitating was ever really there.
 
 Most of the time this assumption is harmless, because most of the time the reconstruction is roughly right. The trouble is that the failures are very likely not randomly distributed. They could cluster precisely where the fingers wrap around the object, where the hand is occluded by the very thing it is manipulating. Which is to say, the model fails hardest exactly during the moments that carry the manipulation information. A pipeline that treats all frames equally is not just averaging in some noise; it is systematically weighting its worst data at the moments that matter most.
 
@@ -52,3 +52,17 @@ is the single most honest number in the project, because a useless score produce
 
 Crucially, all of it is stratified by occlusion severity, frames binned by how much of the object the hand covers. A confidence score that worked only on easy frames would be worthless. The stratification is what turns "we have a score" into "we know where it works."
 
+
+```
+$ python scripts/synthetic_validation.py --out results_synth/
+
+=== VALIDATION SUMMARY ===
+frames: 10000, mean MPJPE 30.1mm
+error by occlusion bin: {'0': 11.8, '1': 16.7, '2': 24.3, '3': 43.1}
+tta_ensemble       rho=+0.884  AUSE=0.087  AUROC=0.958  filter@50%: 19.0mm
+temporal_jitter    rho=+0.936  AUSE=0.023  AUROC=0.967  filter@50%: 16.9mm
+reprojection       rho=+0.931  AUSE=0.024  AUROC=0.966  filter@50%: 17.0mm
+learned_head       rho=+0.724  AUSE=0.124  AUROC=0.853  filter@50%: 21.4mm
+
+PIPELINE VALIDATED ✓
+```
