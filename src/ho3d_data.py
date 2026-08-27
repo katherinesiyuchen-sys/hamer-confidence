@@ -22,6 +22,13 @@ import numpy as np
 # OpenGL->OpenCV convention flip used by HO-3D annotations
 COORD_FLIP = np.array([1.0, -1.0, -1.0], dtype=np.float32)
 
+# HO-3D annotates joints in MANO order (index/middle/pinky/ring/thumb chains,
+# 5 fingertips appended); HaMeR & MediaPipe use OpenPose "simple" order
+# (wrist, then thumb->pinky, each MCP->tip). Remap GT once at load so every
+# downstream comparison is joint-for-joint. From the HO-3D reference code.
+MANO_TO_SIMPLE = [0, 13, 14, 15, 16, 1, 2, 3, 17, 4, 5, 6, 18,
+                  10, 11, 12, 19, 7, 8, 9, 20]
+
 
 @dataclass
 class Frame:
@@ -81,7 +88,7 @@ class HO3D:
         if joints is None or joints.ndim == 1:
             joints3d = np.full((21, 3), np.nan, dtype=np.float32)
         else:
-            joints3d = joints.astype(np.float32) * COORD_FLIP
+            joints3d = (joints.astype(np.float32) * COORD_FLIP)[MANO_TO_SIMPLE]
 
         obj_rot = meta.get("objRot")
         obj_trans = meta.get("objTrans")
