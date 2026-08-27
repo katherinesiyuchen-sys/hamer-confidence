@@ -49,26 +49,51 @@ class HO3D:
     def __len__(self) -> int:
         return len(self.samples)
 
+    def _seq_intrinsics(self, seq: str) -> np.ndarray:
+        """Per-sequence camMat cache. Intrinsics are constant within a sequence,
+        so frames whose annotation failed (all-None meta) can borrow it."""
+        if not hasattr(self, "_K_cache"):
+            self._K_cache: dict[str, np.ndarray] = {}
+        if seq not in self._K_cache:
+            for p in sorted((self.root / seq / "meta").glob("*.pkl")):
+                with open(p, "rb") as f:
+                    m = pickle.load(f)
+                if m.get("camMat") is not None:
+                    self._K_cache[seq] = m["camMat"].astype(np.float32)
+                    break
+            else:
+                self._K_cache[seq] = np.full((3, 3), np.nan, dtype=np.float32)
+        return self._K_cache[seq]
+
     def __getitem__(self, i: int) -> Frame:
         seq, fid = self.samples[i]
         meta_path = self.root / seq / "meta" / f"{fid}.pkl"
         with open(meta_path, "rb") as f:
             meta = pickle.load(f)
 
-        joints = meta["handJoints3D"]
-        # evaluation split hides full hand GT (only wrist); guard for that
+        # a minority of train frames have all-None annotations (failed mocap);
+        # give them NaN GT (downstream skips those) and sequence intrinsics
+        K = meta.get("camMat")
+        K = K.astype(np.float32) if K is not None else self._seq_intrinsics(seq)
+
+        joints = meta.get("handJoints3D")
+        # evaluation split hides full hand GT (only wrist); guard for that too
         if joints is None or joints.ndim == 1:
             joints3d = np.full((21, 3), np.nan, dtype=np.float32)
         else:
             joints3d = joints.astype(np.float32) * COORD_FLIP
 
+        obj_rot = meta.get("objRot")
+        obj_trans = meta.get("objTrans")
         return Frame(
             image_path=self.root / seq / "rgb" / f"{fid}.jpg",
-            K=meta["camMat"].astype(np.float32),
+            K=K,
             joints3d_cam=joints3d,
-            obj_rot=meta["objRot"].reshape(3).astype(np.float32),
-            obj_trans=(meta["objTrans"].astype(np.float32) * COORD_FLIP),
-            obj_name=meta["objName"],
+            obj_rot=(obj_rot.reshape(3).astype(np.float32) if obj_rot is not None
+                     else np.full(3, np.nan, dtype=np.float32)),
+            obj_trans=(obj_trans.astype(np.float32) * COORD_FLIP if obj_trans is not None
+                       else np.full(3, np.nan, dtype=np.float32)),
+            obj_name=meta.get("objName") or "",
             seq=seq,
             idx=int(fid),
         )
